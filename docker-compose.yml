@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  berebrum-cli:
+    build: .
+    container_name: berebrum_cli
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./database:/app/database
+      - ./data:/app/data
+    networks:
+      - berebrum_net
+
+  berebrum-dashboard:
+    build: .
+    container_name: berebrum_dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./database:/app/database
+      - ./data:/app/data
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    networks:
+      - berebrum_net
+
+networks:
+  berebrum_net:
+    driver: bridge
