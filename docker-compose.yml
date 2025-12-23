@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  # --- TU CEREBRO (PYTHON) ---
+  berebrum:
+    build: .
+    container_name: berebrum_c2
+    volumes:
+      - .:/app # Sincroniza tu carpeta actual con el contenedor
+    ports:
+      - "8501:8501" # Dashboard Web
+    depends_on:
+      - berebrum-force # <--- Espera a que la fuerza esté lista
+    stdin_open: true # Vital para input()
+    tty: true # Vital para modo interactivo
+    networks:
+      - red_team_net
+    environment:
+      - MSF_HOST=berebrum-force # <--- Apunta al nuevo nombre DNS
+      - MSF_PASSWORD=${MSF_PASSWORD}
+      - DB_HOST=postgres # (Previsión para cuando uses DB real)
+
+  # --- LA FUERZA (METASPLOIT) ---
+  berebrum-force: # <--- Nombre del servicio en la red interna
+    image: metasploitframework/metasploit-framework
+    container_name: berebrum_force_unit # <--- Nombre visible en Docker Desktop
+    # Iniciamos el servidor RPC automáticamente al arrancar
+    command: ./msfrpcd -P ${MSF_PASSWORD} -S -a 0.0.0.0 -f
+    ports:
+      - "55553:55553" # Puerto RPC
+    networks:
+      - red_team_net
+  berebrum-zap:
+    image: zaproxy/zap-stable:latest
+    container_name: berebrum-zap
+    ports:
+      - "8090:8090" # Puerto para la API de ZAP
+    # El comando inicia ZAP en modo silencioso (daemon), aceptando conexiones de cualquier IP
+    # y configurando la API Key desde la variable de entorno.
+    command: zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.key=${ZAP_API_KEY}
+    environment:
+      - ZAP_API_KEY=${ZAP_API_KEY}
+    restart: unless-stopped
+    networks:
+      - red_team_net
+  berebrum-mobile:
+    image: opensecurity/mobile-security-framework-mobsf:latest
+    container_name: berebrum-mobile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./mobsf_data:/home/mobsf/.MobSF # Persistencia de datos
+    restart: unless-stopped
+    networks:
+      - red_team_net
+networks:
+  red_team_net:
+    driver: bridge

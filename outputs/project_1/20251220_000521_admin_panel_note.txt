@@ -1,0 +1,5 @@
+--- EVIDENCE LOG ---
+Target: example.com
+Time: 20251220_000521
+
+Encontré un panel de administración en el puerto 8080
