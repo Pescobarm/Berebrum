@@ -1,4 +1,4 @@
-from core.msf_commander import MsfCommander
+from core.msf.commander import MsfCommander
 import os
 
 # Simulamos que Nmap encontró esto

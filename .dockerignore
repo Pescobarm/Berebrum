@@ -1,0 +1,12 @@
+# .dockerignore
+.git
+.gitignore
+venv/
+env/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+mobsf_data/
+# Ignora la base de datos local si tienes archivos .db o dumps
+*.db

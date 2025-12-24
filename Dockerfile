@@ -1,5 +1,5 @@
 # Usamos una imagen base ligera de Python
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # 1. Instalar herramientas del sistema (El Arsenal Base)
 # nmap: Para escaneos

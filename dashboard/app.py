@@ -174,34 +174,42 @@ selected_project = [p for p in projects if p.id == pid][0]
 
 findings, attack_flow = get_data(pid)
 
-# DataFrames
-df_find = pd.DataFrame(
-    [
-        {
-            "ID": f.id,
-            "Sev": f.severity,
-            "Name": f.vulnerability_name,
-            "Target": getattr(f, "target", "N/A"),
-            "Mitre": f.mitre_id,
-            "Evidence": f.evidence,
-        }
-        for f in findings
-    ]
-)
+# --- CORRECCIÓN APLICADA AQUÍ (Manejo seguro de DataFrames vacíos) ---
+if not findings:
+    # Si no hay hallazgos, creamos el DF con las columnas vacías para evitar KeyError 'Sev'
+    df_find = pd.DataFrame(columns=["ID", "Sev", "Name", "Target", "Mitre", "Evidence"])
+else:
+    df_find = pd.DataFrame(
+        [
+            {
+                "ID": f.id,
+                "Sev": f.severity,
+                "Name": f.vulnerability_name,
+                "Target": getattr(f, "target", "N/A"),
+                "Mitre": f.mitre_id,
+                "Evidence": f.evidence,
+            }
+            for f in findings
+        ]
+    )
 
-df_flow = pd.DataFrame(
-    [
-        {
-            "Time": f.timestamp,
-            "Tool": f.tool_used,
-            "Target": getattr(f, "target", "N/A"),
-            "Status": f.status,
-            "Cmd": f.command_executed,
-            "Out": f.output_summary,
-        }
-        for f in attack_flow
-    ]
-)
+if not attack_flow:
+    # Igual para el flujo de ataque
+    df_flow = pd.DataFrame(columns=["Time", "Tool", "Target", "Status", "Cmd", "Out"])
+else:
+    df_flow = pd.DataFrame(
+        [
+            {
+                "Time": f.timestamp,
+                "Tool": f.tool_used,
+                "Target": getattr(f, "target", "N/A"),
+                "Status": f.status,
+                "Cmd": f.command_executed,
+                "Out": f.output_summary,
+            }
+            for f in attack_flow
+        ]
+    )
 
 unique_targets = list(
     set(
@@ -217,13 +225,14 @@ c2.markdown(f"**Scope:** `{selected_project.scope_cidrs}`")
 
 # --- TABS ---
 tab_dash, tab_map, tab_vulns, tab_ops = st.tabs(
-    ["📊 COMMAND CENTER", "🗺️ TOPOLOGÍA", "🧬 LABORATORIO (BURP)", "⚔️ OPERACIONES"]
+    ["📊 COMMAND CENTER", "🗺️ TOPOLOGÍA", "🧬 LABORATORIO", "⚔️ OPERACIONES"]
 )
 
 # ================= TAB 1: COMMAND CENTER =================
 with tab_dash:
     k1, k2, k3, k4, k5 = st.columns(5)
 
+    # Ahora esto es seguro porque las columnas existen aunque el DF esté vacío
     crit = len(df_find[df_find["Sev"] == "Critical"])
     high = len(df_find[df_find["Sev"] == "High"])
     med = len(df_find[df_find["Sev"] == "Medium"])
@@ -271,6 +280,9 @@ with tab_dash:
                 paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sin vulnerabilidades registradas.")
+
     with g2:
         st.subheader("Actividad Reciente")
         if not df_flow.empty:
@@ -286,6 +298,8 @@ with tab_dash:
                 font_color="white",
             )
             st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Sin actividad reciente.")
 
 # ================= TAB 2: TOPOLOGÍA =================
 with tab_map:
@@ -306,6 +320,7 @@ with tab_map:
             for t in df_flow["Target"].unique():
                 if t and t != "N/A" and t not in seen:
                     seen.add(t)
+                    # Check safe porque df_find tiene columnas garantizadas
                     has_crit = not df_find[
                         (df_find["Target"] == t) & (df_find["Sev"] == "Critical")
                     ].empty
@@ -321,11 +336,80 @@ with tab_map:
 # ================= TAB 3: LABORATORIO (BURP READY) =================
 with tab_vulns:
     st.subheader("🧬 Análisis y Replicación")
+
+    # --- SECCIÓN 1: CONTEXTO DE EJECUCIÓN (Siempre visible) ---
+    last_scan_cmd = None
+    last_scan_target = "Desconocido"
+
+    if not df_flow.empty:
+        # Filtramos herramientas de escaneo (nmap)
+        scan_logs = df_flow[df_flow["Tool"].str.contains("nmap", case=False, na=False)]
+
+        if not scan_logs.empty:
+            last_entry = scan_logs.iloc[0]
+            raw_cmd = last_entry["Cmd"]
+            last_scan_target = last_entry["Target"]
+            scan_time = last_entry["Time"].strftime("%H:%M:%S")
+
+            # --- LIMPIEZA INTELIGENTE DEL COMANDO ---
+            # Transformamos: "Target: x | Args: {'arguments': '-T4 ...'}"
+            # en: "nmap -T4 ... target"
+            clean_cmd = raw_cmd
+            if "arguments" in raw_cmd:
+                try:
+                    import re
+
+                    # Buscamos el texto de los argumentos usando RegEx
+                    # Captura lo que está entre comillas después de 'arguments':
+                    found = re.search(
+                        r"arguments['\"]?:\s*['\"]([^'\"]+)['\"]", raw_cmd
+                    )
+                    if found:
+                        args = found.group(1)
+                        # Reconstruimos el comando estilo terminal
+                        clean_cmd = f"nmap {args} {last_scan_target}"
+                except Exception:
+                    # Si falla la limpieza, mostramos el original
+                    pass
+
+            last_scan_cmd = clean_cmd
+
+            st.info(
+                f"🔎 Último escaneo registrado contra: **{last_scan_target}** a las {scan_time}"
+            )
+            st.markdown("#### 🕵️ Comando de Descubrimiento Ejecutado")
+            st.code(last_scan_cmd, language="bash")
+            st.caption(
+                "☝️ Puedes copiar este comando y ejecutarlo manualmente en la terminal para depurar."
+            )
+        else:
+            st.warning(
+                "No se encontraron registros de ejecución de Nmap en el historial."
+            )
+    else:
+        st.warning("No hay historial de operaciones todavía.")
+
+    st.markdown("---")
+
+    # --- SECCIÓN 2: HALLAZGOS ---
+    st.markdown("### 🐛 Vulnerabilidades Detectadas")
+
     if df_find.empty:
-        st.info("No hay vulnerabilidades.")
+        st.success(
+            f"🎉 El objetivo '{last_scan_target}' no presenta vulnerabilidades detectadas por ahora."
+        )
+        st.markdown(
+            """
+        **Posibles razones:**
+        * El firewall está bloqueando las conexiones.
+        * El contenedor víctima no está encendido.
+        * El escaneo fue muy rápido (-T5) y perdió paquetes.
+        """
+        )
     else:
         for idx, row in df_find.iterrows():
             sev_icon = "🔴" if row["Sev"] == "Critical" else "🟠"
+
             with st.expander(
                 f"{sev_icon} [{row['Sev']}] {row['Name']} @ {row['Target']}"
             ):
@@ -336,26 +420,30 @@ with tab_vulns:
                     st.text_input(
                         "Target URL", row["Target"], key=f"t_{idx}", disabled=True
                     )
-                    st.caption("MITRE ATT&CK: " + (row["Mitre"] or "N/A"))
+                    st.caption(
+                        "MITRE ATT&CK: "
+                        + (str(row["Mitre"]) if row["Mitre"] else "N/A")
+                    )
                 with c_curl:
                     st.markdown("#### 🚀 Payload (cURL)")
-                    st.code(
-                        generate_curl(row["Target"], row["Evidence"]), language="bash"
-                    )
+                    if row["Evidence"] and len(row["Evidence"]) > 10:
+                        st.code(row["Evidence"], language="http")
+                    else:
+                        st.code(generate_curl(row["Target"]), language="bash")
 
                 st.markdown("---")
 
-                c_steps, c_evidence = st.columns([1, 1])
+                c_steps, c_ev = st.columns([1, 1])
                 with c_steps:
-                    st.markdown("#### 👣 Paso a Paso (Replicación)")
+                    st.markdown("#### 👣 Paso a Paso")
                     pasos = generate_reproduction_steps(row["Name"], row["Target"])
                     for p in pasos:
                         st.markdown(
                             f'<div class="step-box">{p}</div>', unsafe_allow_html=True
                         )
-                with c_evidence:
-                    st.markdown("#### 📸 Evidencia Técnica (Raw)")
-                    st.code(row["Evidence"], language="http")
+                with c_ev:
+                    st.markdown("#### 📸 Evidencia")
+                    st.code(row["Evidence"] or "Sin evidencia raw", language="http")
 
 # ================= TAB 4: OPERACIONES =================
 with tab_ops:

@@ -74,3 +74,4 @@ signatures/
 *.iso
 *.bin
 *.BIN
+data/wordlists/

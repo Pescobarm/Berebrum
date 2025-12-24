@@ -1,5 +1,5 @@
 import time
-from core.msf_commander import MsfCommander
+from core.msf.commander import MsfCommander
 
 
 def simulacro_ataque():

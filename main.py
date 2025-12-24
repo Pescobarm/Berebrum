@@ -34,7 +34,7 @@ from mcp_servers.web_owasp.secret_hunter import SecretHunter
 from mcp_servers.web_owasp.ssl_validator import SSLValidator
 
 # --- COMMANDERS ---
-from core.msf_commander import MsfCommander
+from core.msf.commander import MsfCommander
 from core.zap_commander import ZapCommander
 from core.mobsf_commander import MobSFCommander  # <--- INTEGRACIÓN MÓVIL
 
