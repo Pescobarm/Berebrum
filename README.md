@@ -35,4 +35,4 @@ python cli\main.py
 
 # Dashboard
 streamlit run dashboard\app.py
-```
+```contribucion de yo
